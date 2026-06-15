@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: "/wzj-word-memory/favicon.svg",
+    apple: "/wzj-word-memory/icons/icon-192.png",
   },
 };
 
