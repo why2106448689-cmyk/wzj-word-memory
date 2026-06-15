@@ -5,14 +5,14 @@ import ClientProvider from "@/components/ClientProvider";
 export const metadata: Metadata = {
   title: "wzj单词记忆",
   description: "艾宾浩斯背单词应用",
-  manifest: "/manifest.json",
+  manifest: "/wzj-word-memory/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "wzj单词记忆",
   },
   icons: {
-    icon: "/favicon.svg",
+    icon: "/wzj-word-memory/favicon.svg",
   },
 };
 
