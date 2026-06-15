@@ -9,8 +9,12 @@ export default function ClientProvider({
   children: React.ReactNode;
 }) {
   useEffect(() => {
-    // 检查并重置今日统计
     useStudyStore.getState().checkAndResetToday();
+
+    // Register service worker for PWA
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/wzj-word-memory/sw.js").catch(() => {});
+    }
   }, []);
 
   return <>{children}</>;

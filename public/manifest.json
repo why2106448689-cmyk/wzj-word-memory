@@ -11,16 +11,20 @@
   "categories": ["education"],
   "icons": [
     {
-      "src": "/wzj-word-memory/icons/icon-192.svg",
+      "src": "/wzj-word-memory/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "/wzj-word-memory/icons/icon-192.svg",
+      "src": "/wzj-word-memory/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png"
+    },
+    {
+      "src": "/wzj-word-memory/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
