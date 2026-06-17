@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStudyStore } from "@/lib/store";
 import { calculateEndDate, getDefaultStartDate, TOTAL_LISTS } from "@/types";
+import wordsData from "@/data/toefl_words.json";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
 
@@ -44,7 +45,8 @@ export default function SettingsPage() {
   };
 
   const handleSetCustomProgress = () => {
-    setListProgress(customListId, customStatus);
+    const wordCount = (wordsData as { listNumber: number }[]).filter(w => w.listNumber === customListId).length;
+    setListProgress(customListId, customStatus, wordCount);
     setShowCustomProgress(false);
   };
 

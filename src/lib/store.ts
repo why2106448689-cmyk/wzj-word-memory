@@ -57,7 +57,7 @@ interface StudyStore {
   resetAllProgress: () => void;
 
   // 设置指定List的进度
-  setListProgress: (listId: number, status: ListStatus) => void;
+  setListProgress: (listId: number, status: ListStatus, wordCount?: number) => void;
 }
 
 export const useStudyStore = create<StudyStore>()(
@@ -158,15 +158,15 @@ export const useStudyStore = create<StudyStore>()(
           },
         }),
 
-      setListProgress: (listId, status) =>
+      setListProgress: (listId, status, wordCount) =>
         set((state) => ({
           listProgress: {
             ...state.listProgress,
             [listId]: {
               listId,
               status,
-              wordsLearned: status === "completed" ? 90 : 0,
-              wordsMastered: status === "completed" ? 90 : 0,
+              wordsLearned: status === "completed" ? (wordCount ?? 0) : 0,
+              wordsMastered: status === "completed" ? (wordCount ?? 0) : 0,
             },
           },
         })),

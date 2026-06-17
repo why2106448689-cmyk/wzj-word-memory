@@ -71,6 +71,7 @@ export default function LearnPage() {
   const [totalReviewWords, setTotalReviewWords] = useState<{ word: Word; familiarity: Familiarity }[]>([]);
   const [totalReviewIndex, setTotalReviewIndex] = useState(0);
   const [totalReviewShowAnswer, setTotalReviewShowAnswer] = useState(false);
+  const [totalReviewFailedWords, setTotalReviewFailedWords] = useState<{ word: Word; familiarity: Familiarity }[]>([]);
 
   // 复习相关
   const [reviewWords, setReviewWords] = useState<{ word: Word; familiarity: Familiarity }[]>([]);
@@ -119,23 +120,23 @@ export default function LearnPage() {
 
   // 倒计时
   useEffect(() => {
-    if (isTimerRunning && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            // 时间到，停止计时
-            setIsTimerRunning(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
+    if (!isTimerRunning) return;
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          setIsTimerRunning(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isTimerRunning, timeLeft]);
+  }, [isTimerRunning]);
 
   // 计时器到期时，如果用户正在学一个单词（已翻面但未评分），等待评分后再进入快速复习
   useEffect(() => {
@@ -153,21 +154,23 @@ export default function LearnPage() {
 
   // 30分钟总复习倒计时
   useEffect(() => {
-    if (isThirtyMinTimerRunning && thirtyMinTimeLeft > 0) {
-      thirtyMinTimerRef.current = setInterval(() => {
-        setThirtyMinTimeLeft(prev => {
-          if (prev <= 1) {
-            setIsThirtyMinTimerRunning(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
+    if (!isThirtyMinTimerRunning) return;
+
+    thirtyMinTimerRef.current = setInterval(() => {
+      setThirtyMinTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(thirtyMinTimerRef.current!);
+          setIsThirtyMinTimerRunning(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
     return () => {
       if (thirtyMinTimerRef.current) clearInterval(thirtyMinTimerRef.current);
     };
-  }, [isThirtyMinTimerRunning, thirtyMinTimeLeft]);
+  }, [isThirtyMinTimerRunning]);
 
   // 30分钟计时到期处理
   useEffect(() => {
@@ -193,6 +196,7 @@ export default function LearnPage() {
               setTotalReviewWords(shuffleArray(thirtyMinLearnedWords));
               setTotalReviewIndex(0);
               setTotalReviewShowAnswer(false);
+              setTotalReviewFailedWords([]);
               setPhase("total-review");
             }
           }
@@ -306,6 +310,7 @@ export default function LearnPage() {
         setTotalReviewWords(shuffleArray(thirtyMinLearnedWords));
         setTotalReviewIndex(0);
         setTotalReviewShowAnswer(false);
+        setTotalReviewFailedWords([]);
         setPhase("total-review");
       } else {
         // 没有学过单词，回到学习
@@ -335,6 +340,7 @@ export default function LearnPage() {
           setTotalReviewWords(shuffleArray(thirtyMinLearnedWords));
           setTotalReviewIndex(0);
           setTotalReviewShowAnswer(false);
+          setTotalReviewFailedWords([]);
           setPhase("total-review");
         } else {
           setPhase("complete");
@@ -350,6 +356,16 @@ export default function LearnPage() {
 
   // 总复习完成
   const handleTotalReviewComplete = useCallback(() => {
+    // 如果有"还是不会"的单词，再来一轮
+    if (totalReviewFailedWords.length > 0) {
+      const nextRound = shuffleArray(totalReviewFailedWords);
+      setTotalReviewWords(nextRound);
+      setTotalReviewIndex(0);
+      setTotalReviewShowAnswer(false);
+      setTotalReviewFailedWords([]);
+      return;
+    }
+
     // 重置30分钟计时器
     setThirtyMinTimeLeft(TOTAL_REVIEW_MINUTES * 60);
     setIsThirtyMinTimerRunning(false);
@@ -358,12 +374,13 @@ export default function LearnPage() {
     setTotalReviewIndex(0);
     setTotalReviewShowAnswer(false);
     setIsTotalReviewPending(false);
+    setTotalReviewFailedWords([]);
 
     // 回到学习阶段
     setPhase("learn");
     setTimeLeft(TIMER_MINUTES * 60);
     setIsTimerRunning(false);
-  }, []);
+  }, [totalReviewFailedWords]);
 
   // 键盘事件
   useEffect(() => {
@@ -463,6 +480,8 @@ export default function LearnPage() {
           <div style={bottomBtnContainer}>
             <div style={{ display: 'flex', gap: 12, maxWidth: 400, margin: '0 auto' }}>
               <button onClick={() => {
+                // 记录为"还是不会"
+                if (tw) setTotalReviewFailedWords(prev => [...prev, tw]);
                 if (totalReviewIndex < totalReviewWords.length - 1) {
                   setTotalReviewIndex(prev => prev + 1);
                   setTotalReviewShowAnswer(false);
