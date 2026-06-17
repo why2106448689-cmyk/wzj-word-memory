@@ -38,7 +38,7 @@ export default function LearnPage() {
   const params = useParams();
   const listId = parseInt(params.listId as string);
 
-  const { updateWordProgress, updateListProgress, updateUserStats, userStats, wordNotes, setWordNote, wordProgress } = useStudyStore();
+  const { updateWordProgress, updateListProgress, setListProgress, updateUserStats, userStats, wordNotes, setWordNote, wordProgress } = useStudyStore();
 
   const [words, setWords] = useState<Word[]>([]);
   const [phase, setPhase] = useState<Phase>("learn");
@@ -121,6 +121,13 @@ export default function LearnPage() {
     setGroupIndex(resumeGroup);
     setCurrentIndex(offsetInGroup);
   }, [words, listId, wordProgress]);
+
+  // 学习完成时，标记 list 为已完成
+  useEffect(() => {
+    if (phase === "complete") {
+      setListProgress(listId, "completed", words.length);
+    }
+  }, [phase, listId, words.length, setListProgress]);
 
   // 计算当前组的单词
   const currentGroupStart = groupIndex * GROUP_SIZE;
