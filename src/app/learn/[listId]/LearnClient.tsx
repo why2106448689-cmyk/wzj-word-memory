@@ -274,6 +274,12 @@ export default function LearnPage() {
       streakDays: currentStats.lastStudyDate ? currentStats.streakDays : 1,
     });
 
+    // 推进到下一个单词
+    const nextIndex = currentIndex + 1;
+    setShowAnswer(false);
+    setIsRevealed(false);
+    setCurrentIndex(nextIndex);
+
     // 如果计时器已到期且正在等待评分，评分后进入快速复习
     if (isTimerPending) {
       setIsTimerPending(false);
@@ -282,13 +288,8 @@ export default function LearnPage() {
       return;
     }
 
-    if (currentIndex < currentGroupWords.length - 1) {
-      // 继续当前组
-      setShowAnswer(false);
-      setIsRevealed(false);
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      // 当前组完成
+    // 当前组完成，进入快速复习
+    if (nextIndex >= currentGroupWords.length) {
       handleGroupComplete();
     }
   }, [currentIndex, currentWord, currentGroupWords.length, listId, currentGroupStart, updateWordProgress, handleGroupComplete, isTimerPending]);
