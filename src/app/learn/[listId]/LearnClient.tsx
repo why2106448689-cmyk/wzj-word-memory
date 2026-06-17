@@ -38,7 +38,7 @@ export default function LearnPage() {
   const params = useParams();
   const listId = parseInt(params.listId as string);
 
-  const { updateWordProgress, updateListProgress, updateUserStats, userStats, wordNotes, setWordNote } = useStudyStore();
+  const { updateWordProgress, updateListProgress, updateUserStats, userStats, wordNotes, setWordNote, wordProgress } = useStudyStore();
 
   const [words, setWords] = useState<Word[]>([]);
   const [phase, setPhase] = useState<Phase>("learn");
@@ -92,6 +92,35 @@ export default function LearnPage() {
     const listWords = (wordsData as Word[]).filter(w => w.listNumber === listId);
     setWords(listWords);
   }, [listId]);
+
+  // 断点续学：根据 wordProgress 恢复学习位置
+  useEffect(() => {
+    if (words.length === 0) return;
+
+    // 统计当前 list 中连续已学的单词数
+    let learnedCount = 0;
+    for (let i = 0; i < words.length; i++) {
+      const wordId = `${listId}-${i}`;
+      if (wordProgress[wordId]) {
+        learnedCount++;
+      } else {
+        break;
+      }
+    }
+
+    if (learnedCount === 0) return;
+
+    if (learnedCount >= words.length) {
+      setPhase("complete");
+      return;
+    }
+
+    const resumeGroup = Math.floor(learnedCount / GROUP_SIZE);
+    const offsetInGroup = learnedCount % GROUP_SIZE;
+
+    setGroupIndex(resumeGroup);
+    setCurrentIndex(offsetInGroup);
+  }, [words, listId, wordProgress]);
 
   // 计算当前组的单词
   const currentGroupStart = groupIndex * GROUP_SIZE;

@@ -229,11 +229,19 @@ export default function HomePage() {
           )}
 
           {/* 新学按钮 */}
-          {hasNewTask && (
-            <Link href={`/learn/${todayNewLists[0]}`} style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+          {hasNewTask && (() => {
+            const targetList = todayNewLists.find(l => {
+              const lp = listProgress[l];
+              return !lp || lp.status !== "completed";
+            }) || todayNewLists[0];
+            const allDone = todayNewLists.every(l => {
+              const lp = listProgress[l];
+              return lp && lp.status === "completed";
+            });
+            const btnStyle = {
+              display: 'flex' as const,
+              alignItems: 'center' as const,
+              justifyContent: 'center' as const,
               gap: 10,
               padding: '20px 24px',
               background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
@@ -244,13 +252,24 @@ export default function HomePage() {
               fontWeight: 700,
               boxShadow: '0 8px 24px rgba(34, 197, 94, 0.35)',
               opacity: hasReviewTask ? 0.7 : 1,
-            }}>
-              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              再学新词 L{todayNewLists[0]}{todayNewLists[1] ? ` · L${todayNewLists[1]}` : ""}
-            </Link>
-          )}
+            };
+            if (allDone) {
+              return (
+                <div style={{ ...btnStyle, opacity: 0.5 }}>
+                  <span>✅</span>
+                  今日新词已全部完成
+                </div>
+              );
+            }
+            return (
+              <Link href={`/learn/${targetList}`} style={btnStyle}>
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                再学新词 L{targetList}{targetList === todayNewLists[0] && todayNewLists[1] ? ` · L${todayNewLists[1]}` : ""}
+              </Link>
+            );
+          })()}
 
           {/* 如果没有任务，显示预习入口 */}
           {!hasNewTask && !hasReviewTask && (
