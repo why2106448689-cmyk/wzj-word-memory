@@ -10,13 +10,14 @@ import {
   getStudyPhase,
   calculateEndDate,
   TOTAL_LISTS,
+  TOTAL_DAYS,
 } from "@/types";
 import { format, differenceInDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
 
 export default function HomePage() {
   const router = useRouter();
-  const { startDate, listProgress } = useStudyStore();
+  const { startDate, listProgress, todayReviewedLists, checkAndResetToday } = useStudyStore();
   const [mounted, setMounted] = useState(false);
   const [todayTasks, setTodayTasks] = useState({
     newLists: [] as number[],
@@ -29,12 +30,13 @@ export default function HomePage() {
   const effectiveStartDate = startDate || format(new Date(), "yyyy-MM-dd");
 
   // 检查是否有任何List已经开始学习（不是pending状态）
-  const hasStartedLearning = Object.values(listProgress).some(
+  const hasStartedLearning = Object.values(listProgress as Record<number, { status: string }>).some(
     (lp) => lp.status !== "pending"
   );
 
   useEffect(() => {
     setMounted(true);
+    checkAndResetToday();
     const start = new Date(effectiveStartDate);
     setTodayTasks(getDayTask(new Date(), start));
   }, [effectiveStartDate]);
@@ -50,11 +52,15 @@ export default function HomePage() {
   const currentDay = isStarted ? daysSinceStart + 1 : 0;
   const daysUntilStart = isStarted ? 0 : Math.abs(daysSinceStart);
   const daysLeft = getDaysUntilEnd(today, studyEndDate);
-  const progressPercent = isStarted ? Math.min(100, Math.round((currentDay / 54) * 100)) : 0;
+  const progressPercent = isStarted ? Math.min(100, Math.round((currentDay / TOTAL_DAYS) * 100)) : 0;
 
   // 计算今天要学的List（如果还没到开始日期，默认显示 L1, L2）
   const todayNewLists = todayTasks.newLists.length > 0 ? todayTasks.newLists : isStarted ? [] : [1, 2];
-  const todayReviewLists = todayTasks.reviewLists;
+  // 只显示已学过或正在学习的 List 的复习任务
+  const todayReviewLists = todayTasks.reviewLists.filter(l => {
+    const lp = (listProgress as Record<number, { status: string }>)[l];
+    return lp && (lp.status === "completed" || lp.status === "learning");
+  });
   const hasNewTask = todayNewLists.length > 0;
   const hasReviewTask = todayReviewLists.length > 0;
 
@@ -142,7 +148,10 @@ export default function HomePage() {
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 16 }}>📋 今日任务</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {/* 复习任务 - 放在前面 */}
-              {hasReviewTask && (
+              {hasReviewTask && (() => {
+                const today = new Date().toDateString();
+                const reviewedToday = todayReviewedLists.date === today ? todayReviewedLists.lists : [];
+                return (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{
@@ -156,13 +165,24 @@ export default function HomePage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {todayReviewLists.slice(0, 4).map(l => (
-                      <span key={l} style={{ padding: '6px 14px', background: '#fff7ed', color: '#ea580c', borderRadius: 12, fontSize: 14, fontWeight: 600 }}>L{l}</span>
-                    ))}
+                    {todayReviewLists.slice(0, 4).map(l => {
+                      const isDone = reviewedToday.includes(l);
+                      return (
+                        <span key={l} style={{
+                          padding: '6px 14px',
+                          background: isDone ? '#f0fdf4' : '#fff7ed',
+                          color: isDone ? '#16a34a' : '#ea580c',
+                          borderRadius: 12, fontSize: 14, fontWeight: 600,
+                          textDecoration: isDone ? 'line-through' : 'none',
+                          opacity: isDone ? 0.7 : 1,
+                        }}>{isDone ? '✓ ' : ''}L{l}</span>
+                      );
+                    })}
                     {todayReviewLists.length > 4 && <span style={{ fontSize: 13, color: '#94a3b8', alignSelf: 'center' }}>+{todayReviewLists.length - 4}</span>}
                   </div>
                 </div>
-              )}
+                );
+              })()}
               {/* 新学任务 - 放在后面 */}
               {hasNewTask && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -205,28 +225,56 @@ export default function HomePage() {
         {/* 开始学习按钮 - 先复习再新学！ */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* 复习按钮 - 优先显示 */}
-          {hasReviewTask && (
-            <Link href={`/review/${todayReviewLists[0]}`} style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              padding: '20px 24px',
-              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-              borderRadius: 20,
-              textDecoration: 'none',
-              color: 'white',
-              fontSize: 18,
-              fontWeight: 700,
-              boxShadow: '0 8px 24px rgba(249, 115, 22, 0.35)',
-              animation: 'pulse 2s ease-in-out infinite',
-            }}>
-              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-              </svg>
-              先复习 L{todayReviewLists[0]}{todayReviewLists.length > 1 ? ` 等 ${todayReviewLists.length} 个 List` : ""}
-            </Link>
-          )}
+          {hasReviewTask && (() => {
+            const today = new Date().toDateString();
+            const reviewedToday = todayReviewedLists.date === today ? todayReviewedLists.lists : [];
+            const nextReviewList = todayReviewLists.find(l => !reviewedToday.includes(l));
+            const allReviewDone = todayReviewLists.every(l => reviewedToday.includes(l));
+
+            if (allReviewDone) {
+              return (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 10,
+                  padding: '20px 24px',
+                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                  borderRadius: 20,
+                  color: 'white',
+                  fontSize: 18,
+                  fontWeight: 700,
+                  opacity: 0.8,
+                }}>
+                  ✅ 今日复习任务已完成
+                </div>
+              );
+            }
+
+            const remaining = todayReviewLists.filter(l => !reviewedToday.includes(l));
+            return (
+              <Link href={`/review/${nextReviewList}`} style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                padding: '20px 24px',
+                background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                borderRadius: 20,
+                textDecoration: 'none',
+                color: 'white',
+                fontSize: 18,
+                fontWeight: 700,
+                boxShadow: '0 8px 24px rgba(249, 115, 22, 0.35)',
+                animation: 'pulse 2s ease-in-out infinite',
+              }}>
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                </svg>
+                复习 L{nextReviewList}{remaining.length > 1 ? ` 等 ${remaining.length} 个 List` : ""}
+              </Link>
+            );
+          })()}
 
           {/* 新学按钮 */}
           {hasNewTask && (() => {

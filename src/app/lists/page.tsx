@@ -9,7 +9,7 @@ import { differenceInDays, format } from "date-fns";
 type ListStatus = "pending" | "learning" | "completed";
 
 export default function ListsPage() {
-  const { startDate, listProgress } = useStudyStore();
+  const { startDate, listProgress, wordProgress } = useStudyStore();
   const [mounted, setMounted] = useState(false);
   const [lists, setLists] = useState<{ num: number; status: ListStatus }[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "learning" | "completed" | "pending">("all");
@@ -18,19 +18,13 @@ export default function ListsPage() {
 
   useEffect(() => {
     setMounted(true);
-    const studyStartDate = new Date(effectiveStartDate);
-    const daysSinceStart = differenceInDays(new Date(), studyStartDate);
-    const isStarted = daysSinceStart >= 0;
-    const day = isStarted ? daysSinceStart + 1 : 0;
-    const learnedLists = isStarted ? (day - 1) * 2 : 0;
 
     setLists(Array.from({ length: TOTAL_LISTS }).map((_, i) => {
       const num = i + 1;
       const progress = listProgress[num];
       if (progress?.status === "completed") return { num, status: "completed" as ListStatus };
       if (progress?.status === "learning") return { num, status: "learning" as ListStatus };
-      const status: ListStatus = num <= learnedLists ? "completed" : num <= learnedLists + 2 && isStarted ? "learning" : "pending";
-      return { num, status };
+      return { num, status: "pending" as ListStatus };
     }));
   }, [effectiveStartDate, listProgress]);
 
@@ -40,6 +34,14 @@ export default function ListsPage() {
   const learning = lists.filter(l => l.status === "learning").length;
   const pending = TOTAL_LISTS - completed - learning;
   const progressPercent = Math.round((completed / TOTAL_LISTS) * 100);
+
+  // 有已学单词的 List（用于判断 learning 状态是否显示复习按钮）
+  const listsWithLearnedWords = new Set(
+    Object.keys(wordProgress).map(id => {
+      const match = id.match(/^(\d+)-/);
+      return match ? parseInt(match[1]) : -1;
+    }).filter(n => n > 0)
+  );
 
   const filteredLists = activeTab === "all" ? lists : lists.filter(l => l.status === activeTab);
 
@@ -182,7 +184,7 @@ export default function ListsPage() {
                 </Link>
 
                 {/* 复习按钮 */}
-                {(isDone || isLearning) && (
+                {(isDone || (isLearning && listsWithLearnedWords.has(list.num))) && (
                   <Link
                     href={`/review/${list.num}`}
                     style={{

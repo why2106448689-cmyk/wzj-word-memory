@@ -3,8 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { format } from "date-fns";
 import { useStudyStore } from "@/lib/store";
-import { speakWord, isSpeechSupported } from "@/lib/speech";
+import { speakWord } from "@/lib/speech";
+import { getDayTask } from "@/types";
+import { calculateNextReviewDate, updateEaseFactor, getNextReviewNodeIndex } from "@/lib/ebbinghaus";
 import wordsData from "@/data/toefl_words.json";
 
 interface Word {
@@ -32,11 +35,20 @@ function getRandomMode(): Exclude<ReviewMode, "mixed"> {
   return modes[Math.floor(Math.random() * modes.length)];
 }
 
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export default function ReviewPage() {
   const params = useParams();
   const listId = parseInt(params.listId as string);
 
-  const { updateWordProgress, updateUserStats, wordNotes } = useStudyStore();
+  const { updateWordProgress, updateUserStats, wordNotes, markListReviewedToday } = useStudyStore();
 
   const [words, setWords] = useState<Word[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -44,7 +56,9 @@ export default function ReviewPage() {
   const [isRevealed, setIsRevealed] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
-  const [startTime] = useState(Date.now());
+  const startTimeRef = useRef(Date.now());
+  const [unfamiliarWords, setUnfamiliarWords] = useState<Word[]>([]);
+  const [round, setRound] = useState(1);
 
   // 当前模式（混合模式下每个单词随机）
   const [currentMode, setCurrentMode] = useState<ReviewMode>("mixed");
@@ -57,7 +71,7 @@ export default function ReviewPage() {
 
   useEffect(() => {
     const listWords = (wordsData as Word[]).filter(w => w.listNumber === listId);
-    setWords(listWords);
+    setWords(shuffleArray(listWords));
   }, [listId]);
 
   const currentWord = words[currentIndex];
@@ -87,25 +101,44 @@ export default function ReviewPage() {
   const handleFamiliarity = useCallback((familiarity: Familiarity) => {
     if (!currentWord) return;
 
-    const wordId = `${listId}-${currentIndex}`;
+    const wordId = `review-${listId}-${currentWord.word}`;
+    const existing = useStudyStore.getState().wordProgress[wordId];
+    const currentReviewCount = existing?.reviewCount ?? 0;
+    const currentEaseFactor = existing?.easeFactor ?? 2.5;
+
+    // 认识(2)推进复习节点，一般(1)小幅推进，不认识(0)不推进
+    const newReviewCount = familiarity === 0 ? currentReviewCount : currentReviewCount + 1;
+    const newEaseFactor = updateEaseFactor(currentEaseFactor, familiarity);
+    const nodeIndex = getNextReviewNodeIndex(newReviewCount);
+    const nextReview = calculateNextReviewDate(new Date(), nodeIndex, newEaseFactor);
+
     updateWordProgress(wordId, {
       wordId,
       familiarity,
       lastReviewed: new Date(),
-      nextReview: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      reviewCount: 2,
+      nextReview,
+      reviewCount: newReviewCount,
+      easeFactor: newEaseFactor,
     });
 
+    // 不认识的词加入待重复习列表
+    if (familiarity === 0) {
+      setUnfamiliarWords(prev => [...prev, currentWord]);
+    }
+
     const currentStats = useStudyStore.getState().userStats;
+    const now = Date.now();
+    const sessionMinutes = Math.floor((now - startTimeRef.current) / 60000);
+    startTimeRef.current = now;
     useStudyStore.getState().updateUserStats({
       todayReviewed: (currentStats.todayReviewed || 0) + 1,
-      totalMinutes: Math.floor((Date.now() - startTime) / 60000),
+      totalMinutes: (currentStats.totalMinutes || 0) + sessionMinutes,
       lastStudyDate: new Date().toDateString(),
       streakDays: currentStats.lastStudyDate ? currentStats.streakDays : 1,
     });
 
     goToNext();
-  }, [currentIndex, currentWord, words.length, listId, updateWordProgress, startTime]);
+  }, [currentIndex, currentWord, words.length, listId, updateWordProgress]);
 
   const goToNext = useCallback(() => {
     if (currentIndex < words.length - 1) {
@@ -116,9 +149,24 @@ export default function ReviewPage() {
       setCurrentIndex(prev => prev + 1);
       setProgress(((currentIndex + 1) / words.length) * 100);
     } else {
-      setIsComplete(true);
+      // 当前轮结束，检查是否有不认识的词需要重复习
+      const currentUnfamiliar = [...unfamiliarWords];
+      if (currentUnfamiliar.length > 0) {
+        setWords(shuffleArray(currentUnfamiliar));
+        setCurrentIndex(0);
+        setUnfamiliarWords([]);
+        setProgress(0);
+        setRound(prev => prev + 1);
+        setShowAnswer(false);
+        setIsRevealed(false);
+        setSpellingInput("");
+        setSpellingResult(null);
+      } else {
+        markListReviewedToday(listId);
+        setIsComplete(true);
+      }
     }
-  }, [currentIndex, words.length]);
+  }, [currentIndex, words.length, unfamiliarWords, listId, markListReviewedToday]);
 
   const checkSpelling = useCallback(() => {
     if (!currentWord) return;
@@ -204,6 +252,18 @@ export default function ReviewPage() {
   }
 
   if (isComplete) {
+    // 找到下一个未复习的List
+    const { startDate, listProgress } = useStudyStore.getState();
+    const effectiveStartDate = startDate || format(new Date(), "yyyy-MM-dd");
+    const todayTasks = getDayTask(new Date(), new Date(effectiveStartDate));
+    const reviewedLists = useStudyStore.getState().getTodayReviewedLists();
+    const completedReviewLists = todayTasks.reviewLists.filter(l => {
+      const lp = (listProgress as Record<number, { status: string }>)[l];
+      return lp && lp.status === "completed";
+    });
+    const nextReviewList = completedReviewLists.find(l => !reviewedLists.includes(l));
+    const allReviewDone = completedReviewLists.length > 0 && completedReviewLists.every(l => reviewedLists.includes(l));
+
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#f8fafc' }}>
         <div style={{ textAlign: 'center' }}>
@@ -211,8 +271,26 @@ export default function ReviewPage() {
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>复习完成！</h1>
           <p style={{ fontSize: 15, color: '#64748b', marginBottom: 32 }}>太棒了！你已完成 List {listId} 的全部复习</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 300, margin: '0 auto' }}>
+            {allReviewDone ? (
+              <div style={{
+                display: 'block', background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                color: 'white', borderRadius: 16, padding: 16, textAlign: 'center',
+                fontWeight: 600, fontSize: 16,
+              }}>
+                ✅ 今日复习任务已完成
+              </div>
+            ) : nextReviewList ? (
+              <Link href={`/review/${nextReviewList}`} style={{
+                display: 'block', background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                color: 'white', borderRadius: 16, padding: 16, textAlign: 'center',
+                textDecoration: 'none', fontWeight: 600, fontSize: 16,
+              }}>
+                继续复习 L{nextReviewList}
+              </Link>
+            ) : null}
             <button
               onClick={() => {
+                setWords(shuffleArray(words));
                 setCurrentIndex(0);
                 setShowAnswer(false);
                 setIsRevealed(false);
@@ -220,11 +298,13 @@ export default function ReviewPage() {
                 setProgress(0);
                 setSpellingInput("");
                 setSpellingResult(null);
+                setUnfamiliarWords([]);
+                setRound(1);
               }}
               style={{
-                display: 'block', background: 'linear-gradient(135deg, #f97316, #ea580c)',
-                color: 'white', borderRadius: 16, padding: 16, textAlign: 'center',
-                textDecoration: 'none', fontWeight: 600, fontSize: 16, border: 'none', cursor: 'pointer',
+                display: 'block', background: '#fff7ed',
+                color: '#ea580c', borderRadius: 16, padding: 16, textAlign: 'center',
+                fontWeight: 600, fontSize: 16, border: 'none', cursor: 'pointer',
               }}
             >
               再复习一遍
@@ -256,7 +336,7 @@ export default function ReviewPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
             </Link>
-            <span style={{ fontSize: 14, color: '#64748b', fontWeight: 500 }}>{currentIndex + 1} / {totalWords}</span>
+            <span style={{ fontSize: 14, color: '#64748b', fontWeight: 500 }}>{currentIndex + 1} / {totalWords}{round > 1 ? ` · 第${round}轮` : ''}</span>
             <span style={{ fontSize: 14, fontWeight: 600, color: '#8b5cf6' }}>✍️ 拼写</span>
           </div>
           <ModeSelector />
@@ -399,7 +479,7 @@ export default function ReviewPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
               </svg>
             </Link>
-            <span style={{ fontSize: 14, color: '#64748b', fontWeight: 500 }}>{currentIndex + 1} / {totalWords}</span>
+            <span style={{ fontSize: 14, color: '#64748b', fontWeight: 500 }}>{currentIndex + 1} / {totalWords}{round > 1 ? ` · 第${round}轮` : ''}</span>
             <span style={{ fontSize: 14, fontWeight: 600, color: '#0ea5e9' }}>💡 看义想词</span>
           </div>
           <ModeSelector />
@@ -506,7 +586,7 @@ export default function ReviewPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
           </Link>
-          <span style={{ fontSize: 14, color: '#64748b', fontWeight: 500 }}>{currentIndex + 1} / {totalWords}</span>
+          <span style={{ fontSize: 14, color: '#64748b', fontWeight: 500 }}>{currentIndex + 1} / {totalWords}{round > 1 ? ` · 第${round}轮` : ''}</span>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#f97316' }}>📖 看词想义</span>
         </div>
         <ModeSelector />

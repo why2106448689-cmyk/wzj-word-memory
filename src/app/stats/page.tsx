@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useStudyStore } from "@/lib/store";
-import { TOTAL_LISTS, calculateEndDate } from "@/types";
+import { TOTAL_LISTS, TOTAL_DAYS, calculateEndDate } from "@/types";
 import wordsData from "@/data/toefl_words.json";
 import { format, differenceInDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -17,10 +17,10 @@ export default function StatsPage() {
   }, []);
 
   // 计算实际学习数据
-  const totalWords = (wordsData as any[]).length;
+  const totalWords = (wordsData as { listNumber: number }[]).length;
   const learnedWords = Object.keys(wordProgress).length;
-  const masteredWords = Object.values(wordProgress).filter((w: any) => w.familiarity === 2).length;
-  const completedLists = Object.values(listProgress).filter((l: any) => l.status === "completed").length;
+  const masteredWords = Object.values(wordProgress).filter((w) => w.familiarity === 2).length;
+  const completedLists = Object.values(listProgress).filter((l) => l.status === "completed").length;
 
   const stats = {
     totalWords,
@@ -75,7 +75,7 @@ export default function StatsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#fefce8', borderRadius: '12px' }}>
                 <span style={{ fontSize: 14, color: '#ca8a04', fontWeight: 500 }}>当前进度</span>
                 <span style={{ fontSize: 14, fontWeight: 600, color: '#ca8a04' }}>
-                  第 {Math.max(1, differenceInDays(new Date(), new Date(startDate)) + 1)} 天 / 54 天
+                  第 {Math.max(1, differenceInDays(new Date(), new Date(startDate)) + 1)} 天 / {TOTAL_DAYS} 天
                 </span>
               </div>
             </div>
@@ -160,13 +160,13 @@ export default function StatsPage() {
         <div style={cardStyle}>
           <h2 style={sectionTitleStyle}>List 进度</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {Array.from({ length: Math.min(10, TOTAL_LISTS) }).map((_, i) => {
+            {Array.from({ length: TOTAL_LISTS }).map((_, i) => {
               const listId = i + 1;
               const progress = listProgress[listId];
               const isDone = progress?.status === "completed";
               const isCurrent = progress?.status === "learning";
-              const wordsInList = (wordsData as any[]).filter((w: any) => w.listNumber === listId).length;
-              const learnedInList = Object.values(wordProgress).filter((w: any) => w.wordId.startsWith(`${listId}-`)).length;
+              const wordsInList = (wordsData as { listNumber: number }[]).filter((w) => w.listNumber === listId).length;
+              const learnedInList = Object.values(wordProgress).filter((w) => w.wordId.startsWith(`${listId}-`)).length;
               const progressPercent = wordsInList > 0 ? (learnedInList / wordsInList) * 100 : 0;
 
               return (

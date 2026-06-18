@@ -9,6 +9,7 @@ interface WordProgress {
   lastReviewed: Date;
   nextReview: Date;
   reviewCount: number;
+  easeFactor?: number;
 }
 
 interface ListProgress {
@@ -58,11 +59,16 @@ interface StudyStore {
 
   // 设置指定List的进度
   setListProgress: (listId: number, status: ListStatus, wordCount?: number) => void;
+
+  // 今日已复习的List追踪
+  todayReviewedLists: { date: string; lists: number[] };
+  markListReviewedToday: (listId: number) => void;
+  getTodayReviewedLists: () => number[];
 }
 
 export const useStudyStore = create<StudyStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       startDate: null,
       setStartDate: (date) => set({ startDate: date }),
 
@@ -124,21 +130,38 @@ export const useStudyStore = create<StudyStore>()(
         })),
 
       checkAndResetToday: () => {
-        const state = useStudyStore.getState();
+        const state = get();
         const lastStudyDate = state.userStats.lastStudyDate;
         const today = new Date().toDateString();
 
-        // 如果从未学习过，不设置 streakDays
+        // 如果从未学习过，不处理
         if (!lastStudyDate) {
           return;
         }
 
-        // 如果是新的一天，重置今日统计并增加连续学习天数
-        if (lastStudyDate !== today) {
-          useStudyStore.getState().resetTodayStats();
-          useStudyStore.getState().updateUserStats({
-            lastStudyDate: today,
+        // 如果是同一天，不需要处理
+        if (lastStudyDate === today) {
+          return;
+        }
+
+        // 判断昨天是否学习过（连续天数是否应该+1）
+        const lastDate = new Date(lastStudyDate);
+        const todayDate = new Date(today);
+        const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 1) {
+          // 昨天学习了，连续天数+1，重置今日统计
+          state.resetTodayStats();
+          state.updateUserStats({
             streakDays: state.userStats.streakDays + 1,
+            lastStudyDate: today,
+          });
+        } else if (diffDays > 1) {
+          // 断了一天以上，连续天数归零，重置今日统计
+          state.resetTodayStats();
+          state.updateUserStats({
+            streakDays: 0,
+            lastStudyDate: today,
           });
         }
       },
@@ -149,6 +172,7 @@ export const useStudyStore = create<StudyStore>()(
           wordProgress: {},
           wordNotes: {},
           listProgress: {},
+          todayReviewedLists: { date: new Date().toDateString(), lists: [] },
           userStats: {
             streakDays: 0,
             lastStudyDate: null,
@@ -170,6 +194,30 @@ export const useStudyStore = create<StudyStore>()(
             },
           },
         })),
+
+      todayReviewedLists: { date: new Date().toDateString(), lists: [] },
+      markListReviewedToday: (listId) =>
+        set((state) => {
+          const today = new Date().toDateString();
+          const current = state.todayReviewedLists;
+          // 如果日期变了，重置
+          if (current.date !== today) {
+            return { todayReviewedLists: { date: today, lists: [listId] } };
+          }
+          // 如果已经在列表中，不重复添加
+          if (current.lists.includes(listId)) {
+            return {};
+          }
+          return { todayReviewedLists: { date: today, lists: [...current.lists, listId] } };
+        }),
+      getTodayReviewedLists: () => {
+        const state = get();
+        const today = new Date().toDateString();
+        if (state.todayReviewedLists.date !== today) {
+          return [];
+        }
+        return state.todayReviewedLists.lists;
+      },
     }),
     {
       name: "wzj-study-storage",

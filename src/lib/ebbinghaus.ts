@@ -10,9 +10,9 @@ const DEFAULT_EASE_FACTOR = 2.5;
 export function calculateNextReviewDate(
   lastReviewDate: Date,
   nodeIndex: number,
-  easeFactor: number = DEFAULT_EASE_FACTOR
+  _easeFactor: number = DEFAULT_EASE_FACTOR
 ): Date {
-  const daysToAdd = Math.round(REVIEW_NODES[nodeIndex] * easeFactor);
+  const daysToAdd = REVIEW_NODES[nodeIndex];
   const nextDate = new Date(lastReviewDate);
   nextDate.setDate(nextDate.getDate() + daysToAdd);
   return nextDate;

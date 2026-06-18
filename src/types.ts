@@ -17,7 +17,7 @@ const NEW_LISTS_PER_DAY = 2;
 const NEW_LISTS_DAYS = Math.ceil(TOTAL_LISTS / NEW_LISTS_PER_DAY);
 
 // 总学习天数（新列表 + 最长复习周期）
-const TOTAL_DAYS = NEW_LISTS_DAYS + EBINGHAUS_NODES[EBINGHAUS_NODES.length - 1];
+export const TOTAL_DAYS = NEW_LISTS_DAYS + EBINGHAUS_NODES[EBINGHAUS_NODES.length - 1];
 
 // 计算结束日期
 export function calculateEndDate(startDate: Date): Date {

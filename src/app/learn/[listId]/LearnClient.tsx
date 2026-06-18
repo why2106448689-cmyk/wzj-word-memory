@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useStudyStore } from "@/lib/store";
 import { speakWord, speakSentenceFast, stopSpeaking, isSpeechSupported } from "@/lib/speech";
 import { translateToChinese } from "@/lib/translate";
+import { calculateNextReviewDate, updateEaseFactor, getNextReviewNodeIndex } from "@/lib/ebbinghaus";
 import wordsData from "@/data/toefl_words.json";
 
 interface Word {
@@ -77,9 +78,10 @@ export default function LearnPage() {
   const [reviewWords, setReviewWords] = useState<{ word: Word; familiarity: Familiarity }[]>([]);
   const [reviewIndex, setReviewIndex] = useState(0);
   const [quickReviewRevealed, setQuickReviewRevealed] = useState(false);
+  const [quickReviewFailedWords, setQuickReviewFailedWords] = useState<{ word: Word; familiarity: Familiarity }[]>([]);
 
   // 统计
-  const [startTime] = useState(Date.now());
+  const startTimeRef = useRef(Date.now());
 
   // 例句翻译
   const [exampleTranslation, setExampleTranslation] = useState("");
@@ -120,6 +122,21 @@ export default function LearnPage() {
 
     setGroupIndex(resumeGroup);
     setCurrentIndex(offsetInGroup);
+
+    // 把当前组内已学过的单词加入快速复习列表，避免跳过复习
+    if (offsetInGroup > 0) {
+      const groupStart = resumeGroup * GROUP_SIZE;
+      const alreadyLearned = [];
+      for (let i = groupStart; i < groupStart + offsetInGroup; i++) {
+        const wp = wordProgress[`${listId}-${i}`];
+        if (wp && words[i]) {
+          alreadyLearned.push({ word: words[i], familiarity: wp.familiarity });
+        }
+      }
+      if (alreadyLearned.length > 0) {
+        setSessionReviewWords(alreadyLearned);
+      }
+    }
   }, [words, listId, wordProgress]);
 
   // 学习完成时，标记 list 为已完成
@@ -264,10 +281,13 @@ export default function LearnPage() {
   };
 
   // 计时器开始运行时，初始化session状态
+  // 如果是续学（currentIndex > 0），保留预填的复习单词
   useEffect(() => {
     if (isTimerRunning) {
       setSessionStartIndex(currentIndex);
-      setSessionReviewWords([]);
+      if (currentIndex === 0) {
+        setSessionReviewWords([]);
+      }
     }
   }, [isTimerRunning]);
 
@@ -297,20 +317,34 @@ export default function LearnPage() {
 
     // 保存进度
     const wordId = `${listId}-${currentGroupStart + currentIndex}`;
+    const existing = useStudyStore.getState().wordProgress[wordId];
+    const currentReviewCount = existing?.reviewCount ?? 0;
+    const currentEaseFactor = existing?.easeFactor ?? 2.5;
+
+    // 认识(2)推进复习节点，一般(1)小幅推进，不认识(0)不推进
+    const newReviewCount = familiarity === 0 ? currentReviewCount : currentReviewCount + 1;
+    const newEaseFactor = updateEaseFactor(currentEaseFactor, familiarity);
+    const nodeIndex = getNextReviewNodeIndex(newReviewCount);
+    const nextReview = calculateNextReviewDate(new Date(), nodeIndex, newEaseFactor);
+
     updateWordProgress(wordId, {
       wordId,
       familiarity,
       lastReviewed: new Date(),
-      nextReview: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      reviewCount: 1,
+      nextReview,
+      reviewCount: newReviewCount,
+      easeFactor: newEaseFactor,
     });
 
     // 使用函数式更新确保获取最新值
     const currentStats = useStudyStore.getState().userStats;
+    const now = Date.now();
+    const sessionMinutes = Math.floor((now - startTimeRef.current) / 60000);
+    startTimeRef.current = now;
     useStudyStore.getState().updateUserStats({
       todayLearned: (currentStats.todayLearned || 0) + 1,
+      totalMinutes: (currentStats.totalMinutes || 0) + sessionMinutes,
       lastStudyDate: new Date().toDateString(),
-      // 如果是第一次学习，设置 streakDays 为 1
       streakDays: currentStats.lastStudyDate ? currentStats.streakDays : 1,
     });
 
@@ -338,6 +372,7 @@ export default function LearnPage() {
   const handleQuickReviewComplete = useCallback(() => {
     setReviewWords([]);
     setSessionReviewWords([]);
+    setQuickReviewFailedWords([]);
 
     // 如果30分钟计时到期，等待快速复习结束后进入总复习
     if (isTotalReviewPending) {
@@ -455,7 +490,7 @@ export default function LearnPage() {
 
   // ===== 学习完成 =====
   if (phase === "complete") {
-    const totalMinutes = Math.floor((Date.now() - startTime) / 60000);
+    const totalMinutes = Math.floor((Date.now() - startTimeRef.current) / 60000);
     return (
       <div style={completePageStyle}>
         <div style={{ textAlign: 'center' }}>
@@ -604,10 +639,22 @@ export default function LearnPage() {
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
                   <button onClick={(e) => {
                     e.stopPropagation();
+                    if (reviewWord) {
+                      setQuickReviewFailedWords(prev => [...prev, reviewWord]);
+                    }
                     if (reviewIndex < sessionReviewWords.length - 1) {
                       setReviewIndex(prev => prev + 1);
                     } else {
-                      handleQuickReviewComplete();
+                      // 检查是否有失败单词需要重来
+                      if (quickReviewFailedWords.length > 0 || reviewWord) {
+                        const failed = [...quickReviewFailedWords, reviewWord].filter(Boolean);
+                        setQuickReviewFailedWords([]);
+                        setSessionReviewWords(failed);
+                        setReviewIndex(0);
+                        setQuickReviewRevealed(false);
+                      } else {
+                        handleQuickReviewComplete();
+                      }
                     }
                   }} style={{ ...smallBtnStyle, background: '#fef2f2', color: '#dc2626' }}>
                     还是不会
@@ -617,7 +664,16 @@ export default function LearnPage() {
                     if (reviewIndex < sessionReviewWords.length - 1) {
                       setReviewIndex(prev => prev + 1);
                     } else {
-                      handleQuickReviewComplete();
+                      // 最后一个单词，检查是否有失败的
+                      if (quickReviewFailedWords.length > 0) {
+                        const failed = [...quickReviewFailedWords];
+                        setQuickReviewFailedWords([]);
+                        setSessionReviewWords(failed);
+                        setReviewIndex(0);
+                        setQuickReviewRevealed(false);
+                      } else {
+                        handleQuickReviewComplete();
+                      }
                     }
                   }} style={{ ...smallBtnStyle, background: '#f0fdf4', color: '#16a34a' }}>
                     记住了

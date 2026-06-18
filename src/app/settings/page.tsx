@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStudyStore } from "@/lib/store";
-import { calculateEndDate, getDefaultStartDate, TOTAL_LISTS } from "@/types";
+import { calculateEndDate, getDefaultStartDate, TOTAL_LISTS, TOTAL_DAYS } from "@/types";
 import wordsData from "@/data/toefl_words.json";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -121,11 +121,11 @@ export default function SettingsPage() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#fefce8', borderRadius: '12px' }}>
               <span style={{ fontSize: 14, color: '#ca8a04', fontWeight: 500 }}>总天数</span>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#ca8a04' }}>54 天</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: '#ca8a04' }}>{TOTAL_DAYS} 天</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#faf5ff', borderRadius: '12px' }}>
               <span style={{ fontSize: 14, color: '#9333ea', fontWeight: 500 }}>总词数</span>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#9333ea' }}>4320 词</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: '#9333ea' }}>{(wordsData as unknown[]).length} 词</span>
             </div>
           </div>
         </div>
